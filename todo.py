@@ -1,67 +1,101 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 
-# File to store tasks
 FILE_NAME = "tasks.txt"
 
-# Load tasks from file
+# ---------- Functions ----------
 def load_tasks():
     try:
         with open(FILE_NAME, "r") as file:
-            tasks = file.readlines()
-            for task in tasks:
-                listbox.insert(tk.END, task.strip())
+            for task in file.readlines():
+                listbox.insert("", "end", values=(task.strip(),))
     except FileNotFoundError:
         pass
 
-# Save tasks to file
 def save_tasks():
-    tasks = listbox.get(0, tk.END)
+    tasks = listbox.get_children()
     with open(FILE_NAME, "w") as file:
         for task in tasks:
-            file.write(task + "\n")
+            file.write(listbox.item(task)['values'][0] + "\n")
 
-# Add task
 def add_task():
     task = entry.get()
-    if task != "":
-        listbox.insert(tk.END, task)
+    if task:
+        listbox.insert("", "end", values=(task,))
         entry.delete(0, tk.END)
         save_tasks()
     else:
         messagebox.showwarning("Warning", "Please enter a task")
 
-# Delete task
 def delete_task():
-    try:
-        selected = listbox.curselection()[0]
-        listbox.delete(selected)
+    selected = listbox.selection()
+    if selected:
+        for item in selected:
+            listbox.delete(item)
         save_tasks()
-    except:
+    else:
         messagebox.showwarning("Warning", "Select a task to delete")
 
-# Main window
+# ---------- Main Window ----------
 root = tk.Tk()
-root.title("To-Do List App")
-root.geometry("400x400")
+root.title("✨ To-Do List")
+root.geometry("450x500")
+root.configure(bg="#1e1e2f")
 
-# Entry box
-entry = tk.Entry(root, width=30, font=("Arial", 14))
-entry.pack(pady=10)
+# ---------- Style ----------
+style = ttk.Style()
+style.theme_use("clam")
 
-# Buttons
-add_btn = tk.Button(root, text="Add Task", command=add_task, width=15)
-add_btn.pack(pady=5)
+style.configure("Treeview",
+                background="#2b2b3c",
+                foreground="white",
+                rowheight=30,
+                fieldbackground="#2b2b3c",
+                font=("Segoe UI", 11))
 
-del_btn = tk.Button(root, text="Delete Task", command=delete_task, width=15)
-del_btn.pack(pady=5)
+style.map("Treeview", background=[("selected", "#4e73df")])
 
-# Listbox
-listbox = tk.Listbox(root, width=40, height=15)
-listbox.pack(pady=10)
+style.configure("TButton",
+                font=("Segoe UI", 10, "bold"),
+                padding=6)
 
-# Load saved tasks
+# ---------- Title ----------
+title = tk.Label(root, text="📝 My Tasks",
+                 bg="#1e1e2f",
+                 fg="white",
+                 font=("Segoe UI", 20, "bold"))
+title.pack(pady=10)
+
+# ---------- Input Frame ----------
+frame = tk.Frame(root, bg="#1e1e2f")
+frame.pack(pady=10)
+
+entry = tk.Entry(frame, width=25, font=("Segoe UI", 12))
+entry.grid(row=0, column=0, padx=5)
+
+add_btn = ttk.Button(frame, text="Add", command=add_task)
+add_btn.grid(row=0, column=1, padx=5)
+
+# ---------- List Frame ----------
+list_frame = tk.Frame(root)
+list_frame.pack(pady=10)
+
+scrollbar = tk.Scrollbar(list_frame)
+scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+listbox = ttk.Treeview(list_frame, columns=("Task",), show="headings", height=12)
+listbox.heading("Task", text="Your Tasks")
+listbox.pack()
+
+listbox.config(yscrollcommand=scrollbar.set)
+scrollbar.config(command=listbox.yview)
+
+# ---------- Delete Button ----------
+del_btn = ttk.Button(root, text="Delete Selected", command=delete_task)
+del_btn.pack(pady=10)
+
+# ---------- Load Data ----------
 load_tasks()
 
-# Run app
+# ---------- Run ----------
 root.mainloop()
