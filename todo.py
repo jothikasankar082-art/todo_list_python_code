@@ -1,101 +1,95 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+import json
+import os
 
-FILE_NAME = "tasks.txt"
+FILE_NAME = "tasks.json"
 
-# ---------- Functions ----------
+# Load tasks from file
 def load_tasks():
-    try:
-        with open(FILE_NAME, "r") as file:
-            for task in file.readlines():
-                listbox.insert("", "end", values=(task.strip(),))
-    except FileNotFoundError:
-        pass
+    if not os.path.exists(FILE_NAME):
+        return []
+    with open(FILE_NAME, "r") as file:
+        return json.load(file)
 
-def save_tasks():
-    tasks = listbox.get_children()
+# Save tasks to file
+def save_tasks(tasks):
     with open(FILE_NAME, "w") as file:
-        for task in tasks:
-            file.write(listbox.item(task)['values'][0] + "\n")
+        json.dump(tasks, file, indent=4)
 
-def add_task():
-    task = entry.get()
-    if task:
-        listbox.insert("", "end", values=(task,))
-        entry.delete(0, tk.END)
-        save_tasks()
-    else:
-        messagebox.showwarning("Warning", "Please enter a task")
+# Add a task
+def add_task(tasks):
+    title = input("Enter task title: ")
+    priority = input("Enter priority (High/Medium/Low): ")
+    
+    task = {
+        "title": title,
+        "priority": priority,
+        "completed": False
+    }
+    
+    tasks.append(task)
+    save_tasks(tasks)
+    print("✅ Task added successfully!")
 
-def delete_task():
-    selected = listbox.selection()
-    if selected:
-        for item in selected:
-            listbox.delete(item)
-        save_tasks()
-    else:
-        messagebox.showwarning("Warning", "Select a task to delete")
+# View tasks
+def view_tasks(tasks):
+    if not tasks:
+        print("No tasks found.")
+        return
+    
+    print("\n📋 Your Tasks:\n")
+    for i, task in enumerate(tasks):
+        status = "✔" if task["completed"] else "✘"
+        print(f"{i+1}. {task['title']} [{task['priority']}] - {status}")
 
-# ---------- Main Window ----------
-root = tk.Tk()
-root.title("✨ To-Do List")
-root.geometry("450x500")
-root.configure(bg="#1e1e2f")
+# Delete task
+def delete_task(tasks):
+    view_tasks(tasks)
+    try:
+        index = int(input("Enter task number to delete: ")) - 1
+        removed = tasks.pop(index)
+        save_tasks(tasks)
+        print(f"🗑 Deleted: {removed['title']}")
+    except:
+        print("Invalid input!")
 
-# ---------- Style ----------
-style = ttk.Style()
-style.theme_use("clam")
+# Mark task as completed
+def complete_task(tasks):
+    view_tasks(tasks)
+    try:
+        index = int(input("Enter task number to mark complete: ")) - 1
+        tasks[index]["completed"] = True
+        save_tasks(tasks)
+        print("✅ Task marked as completed!")
+    except:
+        print("Invalid input!")
 
-style.configure("Treeview",
-                background="#2b2b3c",
-                foreground="white",
-                rowheight=30,
-                fieldbackground="#2b2b3c",
-                font=("Segoe UI", 11))
+# Main menu
+def main():
+    tasks = load_tasks()
+    
+    while True:
+        print("\n===== TO-DO LIST MENU =====")
+        print("1. Add Task")
+        print("2. View Tasks")
+        print("3. Delete Task")
+        print("4. Mark Task as Completed")
+        print("5. Exit")
+        
+        choice = input("Enter your choice: ")
+        
+        if choice == "1":
+            add_task(tasks)
+        elif choice == "2":
+            view_tasks(tasks)
+        elif choice == "3":
+            delete_task(tasks)
+        elif choice == "4":
+            complete_task(tasks)
+        elif choice == "5":
+            print("Goodbye 👋")
+            break
+        else:
+            print("Invalid choice!")
 
-style.map("Treeview", background=[("selected", "#4e73df")])
-
-style.configure("TButton",
-                font=("Segoe UI", 10, "bold"),
-                padding=6)
-
-# ---------- Title ----------
-title = tk.Label(root, text="📝 My Tasks",
-                 bg="#1e1e2f",
-                 fg="white",
-                 font=("Segoe UI", 20, "bold"))
-title.pack(pady=10)
-
-# ---------- Input Frame ----------
-frame = tk.Frame(root, bg="#1e1e2f")
-frame.pack(pady=10)
-
-entry = tk.Entry(frame, width=25, font=("Segoe UI", 12))
-entry.grid(row=0, column=0, padx=5)
-
-add_btn = ttk.Button(frame, text="Add", command=add_task)
-add_btn.grid(row=0, column=1, padx=5)
-
-# ---------- List Frame ----------
-list_frame = tk.Frame(root)
-list_frame.pack(pady=10)
-
-scrollbar = tk.Scrollbar(list_frame)
-scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-listbox = ttk.Treeview(list_frame, columns=("Task",), show="headings", height=12)
-listbox.heading("Task", text="Your Tasks")
-listbox.pack()
-
-listbox.config(yscrollcommand=scrollbar.set)
-scrollbar.config(command=listbox.yview)
-
-# ---------- Delete Button ----------
-del_btn = ttk.Button(root, text="Delete Selected", command=delete_task)
-del_btn.pack(pady=10)
-
-# ---------- Load Data ----------
-load_tasks()
-
-# ---------- Run ----------
-root.mainloop()
+if __name__ == "__main__":
+    main()
