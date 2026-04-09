@@ -1,90 +1,102 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import json
+import sqlite3
 from datetime import datetime
+from tkcalendar import DateEntry
 
-FILE_NAME = "tasks.json"
+# ---------------- DATABASE ----------------
+conn = sqlite3.connect("tasks.db")
+cursor = conn.cursor()
 
-# ------------------ Data Handling ------------------
-def load_tasks():
-    try:
-        with open(FILE_NAME, "r") as f:
-            data = json.load(f)
-            for task in data:
-                tree.insert("", "end", values=(
-                    task["text"], task["priority"], task["time"], task["status"]
-                ))
-    except:
-        pass
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS tasks(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT,
+    priority TEXT,
+    due_date TEXT,
+    status TEXT
+)
+""")
+conn.commit()
 
-def save_tasks():
-    tasks = []
-    for item in tree.get_children():
-        val = tree.item(item)["values"]
-        tasks.append({
-            "text": val[0],
-            "priority": val[1],
-            "time": val[2],
-            "status": val[3]
-        })
-    with open(FILE_NAME, "w") as f:
-        json.dump(tasks, f, indent=4)
-
-# ------------------ Functions ------------------
+# ---------------- FUNCTIONS ----------------
 def add_task():
-    text = entry.get()
+    text = task_entry.get()
     priority = priority_box.get()
-    if text:
-        now = datetime.now().strftime("%d-%m-%Y %H:%M")
-        tree.insert("", "end", values=(text, priority, now, "Pending"))
-        entry.delete(0, tk.END)
-        save_tasks()
-        update_count()
-    else:
-        messagebox.showwarning("Warning", "Enter task!")
+    due = cal.get_date()
 
-def delete_task():
-    selected = tree.selection()
-    if selected:
-        for item in selected:
-            tree.delete(item)
-        save_tasks()
-        update_count()
+    if text:
+        cursor.execute("INSERT INTO tasks(text, priority, due_date, status) VALUES (?, ?, ?, ?)",
+                       (text, priority, str(due), "Pending"))
+        conn.commit()
+        load_tasks()
+        update_dashboard()
+        task_entry.delete(0, tk.END)
+    else:
+        messagebox.showwarning("Warning", "Enter a task")
+
+def load_tasks():
+    for i in tree.get_children():
+        tree.delete(i)
+
+    cursor.execute("SELECT * FROM tasks")
+    for row in cursor.fetchall():
+        tree.insert("", "end", values=row)
 
 def mark_done():
     selected = tree.selection()
     for item in selected:
-        vals = tree.item(item)["values"]
-        tree.item(item, values=(vals[0], vals[1], vals[2], "Done"))
-    save_tasks()
-    update_count()
+        task_id = tree.item(item)["values"][0]
+        cursor.execute("UPDATE tasks SET status='Done' WHERE id=?", (task_id,))
+    conn.commit()
+    load_tasks()
+    update_dashboard()
+
+def delete_task():
+    selected = tree.selection()
+    for item in selected:
+        task_id = tree.item(item)["values"][0]
+        cursor.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+    conn.commit()
+    load_tasks()
+    update_dashboard()
+
+def update_dashboard():
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    total = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE status='Done'")
+    done = cursor.fetchone()[0]
+
+    percent = (done / total * 100) if total else 0
+
+    progress['value'] = percent
+    stats_label.config(text=f"Completed: {done}/{total} ({int(percent)}%)")
+
+def suggest():
+    cursor.execute("SELECT priority, COUNT(*) FROM tasks GROUP BY priority")
+    data = cursor.fetchall()
+
+    if not data:
+        msg = "Start by adding tasks!"
+    else:
+        msg = "Focus on HIGH priority tasks first 🚀"
+
+    messagebox.showinfo("AI Suggestion", msg)
 
 def search_task():
-    query = search_entry.get().lower()
-    for item in tree.get_children():
-        text = tree.item(item)["values"][0].lower()
-        if query in text:
-            tree.selection_set(item)
+    query = search_entry.get()
+    for i in tree.get_children():
+        tree.delete(i)
 
-def update_count():
-    total = len(tree.get_children())
-    done = sum(1 for i in tree.get_children() if tree.item(i)["values"][3] == "Done")
-    status_label.config(text=f"✔ Done: {done} / {total}")
+    cursor.execute("SELECT * FROM tasks WHERE text LIKE ?", ('%'+query+'%',))
+    for row in cursor.fetchall():
+        tree.insert("", "end", values=row)
 
-def suggest_task():
-    suggestions = [
-        "Drink water 💧",
-        "Take a short walk 🚶",
-        "Check emails 📧",
-        "Revise your notes 📚",
-        "Plan tomorrow 📅"
-    ]
-    messagebox.showinfo("Suggestion", suggestions[datetime.now().second % len(suggestions)])
-
-# ------------------ UI ------------------
+# ---------------- UI ----------------
 root = tk.Tk()
-root.title("Smart To-Do Dashboard")
-root.geometry("700x550")
+root.title("AI Productivity Dashboard")
+root.geometry("900x600")
 root.config(bg="#121212")
 
 style = ttk.Style()
@@ -93,59 +105,83 @@ style.theme_use("clam")
 style.configure("Treeview",
                 background="#1e1e1e",
                 foreground="white",
-                rowheight=28,
                 fieldbackground="#1e1e1e",
-                font=("Segoe UI", 10))
+                rowheight=30)
 
 style.map("Treeview", background=[("selected", "#00adb5")])
 
-# Title
-tk.Label(root, text="🚀 Smart Task Dashboard",
+# Tabs
+notebook = ttk.Notebook(root)
+notebook.pack(fill="both", expand=True)
+
+# -------- Dashboard Tab --------
+dashboard = tk.Frame(notebook, bg="#121212")
+notebook.add(dashboard, text="Dashboard")
+
+tk.Label(dashboard, text="📊 Productivity Overview",
          bg="#121212", fg="#00adb5",
-         font=("Segoe UI", 22, "bold")).pack(pady=10)
+         font=("Segoe UI", 20, "bold")).pack(pady=20)
 
-# Input Frame
-frame = tk.Frame(root, bg="#121212")
-frame.pack()
+progress = ttk.Progressbar(dashboard, length=400)
+progress.pack(pady=10)
 
-entry = tk.Entry(frame, width=25, font=("Segoe UI", 12))
-entry.grid(row=0, column=0, padx=5)
+stats_label = tk.Label(dashboard, text="", bg="#121212", fg="white",
+                       font=("Segoe UI", 14))
+stats_label.pack()
 
-priority_box = ttk.Combobox(frame, values=["High", "Medium", "Low"], width=10)
+ttk.Button(dashboard, text="💡 Get Suggestion", command=suggest).pack(pady=20)
+
+# -------- Tasks Tab --------
+tasks_tab = tk.Frame(notebook, bg="#121212")
+notebook.add(tasks_tab, text="Tasks")
+
+# Input
+top_frame = tk.Frame(tasks_tab, bg="#121212")
+top_frame.pack(pady=10)
+
+task_entry = tk.Entry(top_frame, width=30)
+task_entry.grid(row=0, column=0, padx=5)
+
+priority_box = ttk.Combobox(top_frame, values=["High", "Medium", "Low"])
 priority_box.set("Medium")
-priority_box.grid(row=0, column=1, padx=5)
+priority_box.grid(row=0, column=1)
 
-ttk.Button(frame, text="Add Task", command=add_task).grid(row=0, column=2, padx=5)
+cal = DateEntry(top_frame)
+cal.grid(row=0, column=2, padx=5)
+
+ttk.Button(top_frame, text="Add", command=add_task).grid(row=0, column=3)
 
 # Search
-search_entry = tk.Entry(root, width=30)
+search_entry = tk.Entry(tasks_tab)
 search_entry.pack(pady=5)
-ttk.Button(root, text="Search", command=search_task).pack()
+ttk.Button(tasks_tab, text="Search", command=search_task).pack()
 
-# Treeview
-columns = ("Task", "Priority", "Time", "Status")
-tree = ttk.Treeview(root, columns=columns, show="headings", height=12)
+# Table
+cols = ("ID", "Task", "Priority", "Due", "Status")
+tree = ttk.Treeview(tasks_tab, columns=cols, show="headings")
 
-for col in columns:
+for col in cols:
     tree.heading(col, text=col)
-    tree.column(col, anchor="center")
 
-tree.pack(pady=10)
+tree.pack(fill="both", expand=True)
 
 # Buttons
-btn_frame = tk.Frame(root, bg="#121212")
-btn_frame.pack()
+btn_frame = tk.Frame(tasks_tab, bg="#121212")
+btn_frame.pack(pady=10)
 
-ttk.Button(btn_frame, text="Mark Done", command=mark_done).grid(row=0, column=0, padx=5)
+ttk.Button(btn_frame, text="Done", command=mark_done).grid(row=0, column=0, padx=5)
 ttk.Button(btn_frame, text="Delete", command=delete_task).grid(row=0, column=1, padx=5)
-ttk.Button(btn_frame, text="💡 Suggest", command=suggest_task).grid(row=0, column=2, padx=5)
 
-# Status
-status_label = tk.Label(root, text="", bg="#121212", fg="white", font=("Segoe UI", 12))
-status_label.pack(pady=10)
+# -------- Analytics Tab --------
+analytics = tk.Frame(notebook, bg="#121212")
+notebook.add(analytics, text="Analytics")
 
-# Load Data
+tk.Label(analytics, text="📈 Analytics Coming Soon...",
+         bg="#121212", fg="white",
+         font=("Segoe UI", 18)).pack(pady=50)
+
+# Load initial data
 load_tasks()
-update_count()
+update_dashboard()
 
 root.mainloop()
